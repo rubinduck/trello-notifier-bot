@@ -3,6 +3,7 @@ import datetime
 from itertools import chain
 from typing import List, Iterator
 
+import telegram
 from trello import TrelloClient, Card
 
 
@@ -25,8 +26,19 @@ def flatten(src) -> Iterator:
     """flatten iterable of iterables"""
     return chain.from_iterable(src)
 
+
+class MyTelgramBot:
+    def __init__(self, telegram_config: dict):
+        self._bot = telegram.Bot(telegram_config['bot_token'])
+        self.owner_chat_id = telegram_config['owner_chat_id']
+
+    def send_message(self, text):
+        self._bot.send_message(self.owner_chat_id, text)
+
+
 if __name__ == '__main__':
     with open('config.json', 'r') as config_file:
         config = json.load(config_file)
     my_client = MyTrelloClient(config['trello_api_keys'])
-    print(list(my_client.get_due_today_cards()))
+    my_telegram_bot = MyTelgramBot(config['telegram'])
+    my_telegram_bot.send_message('test')

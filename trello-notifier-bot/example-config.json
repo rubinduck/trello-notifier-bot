@@ -1,6 +1,10 @@
 {
     "trello_api_keys": {
-        "api_key": "otoeutiorewuo4i30uoigha",
-        "api_secret": "dfjoiqejfo4iuqto"
+        "api_key": "",
+        "api_secret": ""
+    },
+    "telegram" : {
+        "bot_token": "",
+        "owner_chat_id": ""
     }
 }
