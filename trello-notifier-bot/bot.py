@@ -7,8 +7,8 @@ from trello import TrelloClient, Card
 
 
 class MyTrelloClient:
-    def __init__(self, acces_keys: dict):
-        self._client = TrelloClient(**client_acces_keys)
+    def __init__(self, trello_api_keys: dict):
+        self._client = TrelloClient(**trello_api_keys)
     
     def get_due_today_cards(self) -> List[Card]:
         boards = self._client.list_boards()
@@ -27,6 +27,6 @@ def flatten(src) -> Iterator:
 
 if __name__ == '__main__':
     with open('config.json', 'r') as config_file:
-        client_acces_keys = json.load(config_file)
-    my_client = MyTrelloClient(client_acces_keys)
+        config = json.load(config_file)
+    my_client = MyTrelloClient(config['trello_api_keys'])
     print(list(my_client.get_due_today_cards()))
