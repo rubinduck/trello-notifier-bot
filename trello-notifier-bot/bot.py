@@ -72,10 +72,23 @@ def flatten(src) -> Iterator:
     return chain.from_iterable(src)
 
 
+def main():
+    """Launch bot using given config file given as parameter"""
+    from argparse import ArgumentParser
 
-if __name__ == '__main__':
-    with open('config.json', 'r') as config_file:
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument("config_file", type=str,
+                            help="path to json file with config like example")
+    args = arg_parser.parse_args()
+
+    config_file_path = args.config_file
+    with open(config_file_path, 'r') as config_file:
         config = json.load(config_file)
 
     notifier = Notifier(config)
     notifier.run()
+
+
+if __name__ == '__main__':
+    main()
+
