@@ -15,6 +15,7 @@ class MyTrelloClient:
         self._client = TrelloClient(**trello_api_keys)
     
     def get_due_today_cards(self) -> List[Card]:
+        """returns card, what have due date what is today or before and is not closed"""
         boards = self._client.list_boards()
         cards = flatten(map(lambda board: board.open_cards(), boards))
         cards = filter(lambda card: card.due is not None, cards)
@@ -45,31 +46,31 @@ class Notifier:
         self._trello_client = MyTrelloClient(config['trello_api_keys'])
         self._bot = MyTelgramBot(config['telegram'])
         self._notify_time_list = config['notification_times']
-        self.schedule_notifcation()
+        self._set_up_notification_times()
 
-    def schedule_notifcation(self):
+    def _set_up_notification_times(self):
         for time in self._notify_time_list:
-            schedule.every().day.at(time).do(self.send_unfinished_cards_notifications)
+            schedule.every().day.at(time).do(self._send_messages_with_unfinished_cards)
 
     def run(self):
         while True:
             schedule.run_pending()
             time.sleep(1)
 
-    def send_unfinished_cards_notifications(self):
+    def _send_messages_with_unfinished_cards(self):
         cards = self._trello_client.get_due_today_cards()
         for card in cards:
-            self._bot.send_message(Notifier.card_obj_to_message(card))
+            self._bot.send_message(text=Notifier.card_obj_to_message(card))
 
     def card_obj_to_message(card: Card) -> str:
-        return (f'{card.board.name}\n' +
-                # f'{card.list.name}\n'  +
+        return (f'{card.due_date.strftime("%m.%d")}\n'  +
                 f'{card.name}\n')
 
 
 def flatten(src) -> Iterator:
     """flatten iterable of iterables"""
     return chain.from_iterable(src)
+
 
 
 if __name__ == '__main__':
