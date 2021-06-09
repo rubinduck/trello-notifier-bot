@@ -74,6 +74,7 @@ def flatten(src) -> Iterator:
 
 def main():
     """Launch bot using given config file given as parameter"""
+    import os
     from argparse import ArgumentParser
 
     arg_parser = ArgumentParser()
@@ -82,8 +83,16 @@ def main():
     args = arg_parser.parse_args()
 
     config_file_path = args.config_file
+    if not os.path.isfile(config_file_path):
+        print('You must give valid file path')
+        return
+
     with open(config_file_path, 'r') as config_file:
-        config = json.load(config_file)
+        try:
+            config = json.load(config_file)
+        except json.JSONDecodeError:
+            print('You must provide valid json')
+            return
 
     notifier = Notifier(config)
     notifier.run()
