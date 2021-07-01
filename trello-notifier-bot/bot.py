@@ -2,68 +2,93 @@ import json
 import time
 import datetime
 from itertools import chain
+from threading import Thread
 from typing import List, Iterator
 
 import telegram
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import ext as tg_ext
 import schedule
 from trello import TrelloClient, Card
 
 
-class MyTrelloClient:
-    _client: TrelloClient
-    def __init__(self, trello_api_keys: dict):
-        self._client = TrelloClient(**trello_api_keys)
-    
-    def get_due_today_cards(self) -> List[Card]:
-        """returns card, what have due date what is today or before and is not closed"""
-        boards = self._client.list_boards()
+
+class TelegramBot:
+    # _bot: telegram.Bot
+    # _notifier: Notifier
+    # _trello_client: MyTrelloClient
+    # _updater: telegram.ext.Updater
+    # _owner_id: str
+    # TODO somehow verify config is right
+    def __init__(self, config:dict):
+        self._bot           = telegram.Bot(config['telegram']['bot_token'])
+        self._updater       = tg_ext.Updater(config['telegram']['bot_token'])
+        self._owner_id      = config['telegram']['owner_chat_id']
+        self._trello_client = TrelloClient(**config['trello_api_keys'])
+        self._notify_time_list = config['notification_times']
+
+        self._set_up_notification_schedule(self._notify_time_list)
+        self._add_callback_query_handler()
+
+    def start(self):
+        self._start_notifing()
+        self._start_handling_messages()
+
+    def _start_notifing(self):
+        def run_scheduler():
+            import threading
+            while True:
+                schedule.run_pending()
+                time.sleep(1)
+        thread = Thread(target=run_scheduler, daemon=True)
+        thread.start()
+
+    def _start_handling_messages(self):
+        self._updater.start_polling()
+        self._updater.idle()
+
+    def _set_up_notification_schedule(self, notification_times: List[str]):
+        for time in notification_times:
+            # schedule.every().day.at(time).do(self._send_messages_with_unfinished_cards)
+            schedule.every().minute.at(':00').do(self._send_messages_with_unfinished_cards)
+
+    def _add_callback_query_handler(self):
+        callback_query_handler = tg_ext.CallbackQueryHandler(self._handle_callback_query)
+        self._updater.dispatcher.add_handler(callback_query_handler)
+
+    def _handle_callback_query(self, update: telegram.Update, context: tg_ext.CallbackContext):
+        query = update.callback_query
+        query.answer()
+        new_message_text = query.message.text + '\nDone ✅'
+        query.edit_message_text(new_message_text)
+
+    def _send_messages_with_unfinished_cards(self):
+        cards = self._get_due_today_cards()
+        notification_messages = self._get_due_today_cards()
+        reply_markup = InlineKeyboardMarkup(
+            # TODO
+            [[InlineKeyboardButton('Finished', callback_data='test')]])
+        for notification_message in notification_messages:
+            self._bot.send_message(text=notification_message,
+                                  chat_id=self._owner_id,
+                                  reply_markup=reply_markup)
+
+    # TODO maybe rename
+    def _get_due_today_cards(self) -> List[str]:
+        """returns string card representations,
+           what have due date what is today or before and is not closed"""
+        boards = self._trello_client.list_boards()
         cards = flatten(map(lambda board: board.open_cards(), boards))
         cards = filter(lambda card: card.due is not None, cards)
         cards = filter(lambda card: not card.is_due_complete , cards)
         date_today = datetime.date.today()
         cards = filter(lambda card: card.due_date.date() <= date_today,
                        cards)
-        cards = list(cards)
-        return cards
+        cards = map(lambda card: TelegramBot.card_obj_to_message_text(card),
+                    cards)
+        return list(cards)
 
-
-class MyTelgramBot:
-    _bot: telegram.Bot
-    _owner_chat_id: str
-    def __init__(self, telegram_config: dict):
-        self._bot = telegram.Bot(telegram_config['bot_token'])
-        self._owner_chat_id = telegram_config['owner_chat_id']
-
-    def send_message(self, text):
-        self._bot.send_message(self._owner_chat_id, text)
-
-
-class Notifier:
-    _trello_client: MyTrelloClient
-    _bot: MyTelgramBot
-    _notify_time_list: List[str]
-    def __init__(self, config: dict):
-        self._trello_client = MyTrelloClient(config['trello_api_keys'])
-        self._bot = MyTelgramBot(config['telegram'])
-        self._notify_time_list = config['notification_times']
-        self._set_up_notification_times()
-
-    def start(self):
-        while True:
-            schedule.run_pending()
-            time.sleep(1)
-
-    def _set_up_notification_times(self):
-        for time in self._notify_time_list:
-            schedule.every().day.at(time).do(self._send_messages_with_unfinished_cards)
-
-
-    def _send_messages_with_unfinished_cards(self):
-        cards = self._trello_client.get_due_today_cards()
-        for card in cards:
-            self._bot.send_message(text=Notifier.card_obj_to_message(card))
-
-    def card_obj_to_message(card: Card) -> str:
+    def card_obj_to_message_text(card: Card) -> str:
         return (f'{card.due_date.strftime("%m.%d")}\n'  +
                 f'{card.name}\n')
 
@@ -95,10 +120,9 @@ def main():
             print('You must provide valid json')
             return
 
-    notifier = Notifier(config)
-    notifier.start()
+    bot = TelegramBot(config)
+    bot.start()
 
 
 if __name__ == '__main__':
     main()
-
