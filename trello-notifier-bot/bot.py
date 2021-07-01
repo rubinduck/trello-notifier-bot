@@ -48,14 +48,15 @@ class Notifier:
         self._notify_time_list = config['notification_times']
         self._set_up_notification_times()
 
+    def start(self):
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
+
     def _set_up_notification_times(self):
         for time in self._notify_time_list:
             schedule.every().day.at(time).do(self._send_messages_with_unfinished_cards)
 
-    def run(self):
-        while True:
-            schedule.run_pending()
-            time.sleep(1)
 
     def _send_messages_with_unfinished_cards(self):
         cards = self._trello_client.get_due_today_cards()
@@ -95,7 +96,7 @@ def main():
             return
 
     notifier = Notifier(config)
-    notifier.run()
+    notifier.start()
 
 
 if __name__ == '__main__':
