@@ -21,10 +21,10 @@ class TelegramBot:
     # _owner_id: str
     # TODO somehow verify config is right
     def __init__(self, config:dict):
-        self._bot           = telegram.Bot(config['telegram']['bot_token'])
-        self._updater       = tg_ext.Updater(config['telegram']['bot_token'])
-        self._owner_id      = config['telegram']['owner_chat_id']
-        self._trello_client = TrelloClient(**config['trello_api_keys'])
+        self._bot              = telegram.Bot(config['telegram']['bot_token'])
+        self._updater          = tg_ext.Updater(config['telegram']['bot_token'])
+        self._owner_id         = config['telegram']['owner_chat_id']
+        self._trello_client    = TrelloClient(**config['trello_api_keys'])
         self._notify_time_list = config['notification_times']
 
         self._set_up_notification_schedule(self._notify_time_list)
@@ -49,8 +49,7 @@ class TelegramBot:
 
     def _set_up_notification_schedule(self, notification_times: List[str]):
         for time in notification_times:
-            # schedule.every().day.at(time).do(self._send_messages_with_unfinished_cards)
-            schedule.every().minute.at(':00').do(self._send_messages_with_unfinished_cards)
+            schedule.every().day.at(time).do(self._send_messages_with_unfinished_cards)
 
     def _add_callback_query_handler(self):
         callback_query_handler = tg_ext.CallbackQueryHandler(self._handle_callback_query)
@@ -58,20 +57,31 @@ class TelegramBot:
 
     def _handle_callback_query(self, update: telegram.Update, context: tg_ext.CallbackContext):
         query = update.callback_query
+        callback_data = json.loads(query.data)
+        if callback_data['act'] == 'mark-card-finished':
+            card_id = callback_data['id']
+            card = self._trello_client.get_card(card_id)
+            card.set_due_complete()
+        else:
+            print('unknow action')
+            return
         query.answer()
         new_message_text = query.message.text + '\nDone ✅'
         query.edit_message_text(new_message_text)
 
     def _send_messages_with_unfinished_cards(self):
         cards = self._get_due_today_cards()
-        notification_messages = self._get_due_today_cards()
-        reply_markup = InlineKeyboardMarkup(
-            # TODO
-            [[InlineKeyboardButton('Finished', callback_data='test')]])
-        for notification_message in notification_messages:
-            self._bot.send_message(text=notification_message,
-                                  chat_id=self._owner_id,
-                                  reply_markup=reply_markup)
+        for card in cards:
+            msg_text = TelegramBot.card_obj_to_message_text(card)
+            # TODO maybe rework how callback data type is defined
+            callback_data = {'act': 'mark-card-finished',
+                             'id': card.id}
+            callback_data = json.dumps(callback_data)
+            reply_markup = InlineKeyboardMarkup(
+                [[InlineKeyboardButton('Finished', callback_data=callback_data)]])
+            self._bot.send_message(text=msg_text,
+                                   chat_id=self._owner_id,
+                                   reply_markup=reply_markup)
 
     # TODO maybe rename
     def _get_due_today_cards(self) -> List[str]:
@@ -84,8 +94,6 @@ class TelegramBot:
         date_today = datetime.date.today()
         cards = filter(lambda card: card.due_date.date() <= date_today,
                        cards)
-        cards = map(lambda card: TelegramBot.card_obj_to_message_text(card),
-                    cards)
         return list(cards)
 
     def card_obj_to_message_text(card: Card) -> str:
