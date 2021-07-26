@@ -30,6 +30,16 @@ class TelegramBot:
         self._set_up_notification_schedule(self._notify_time_list)
         self._add_callback_query_handler()
 
+
+    def _prepare_callback_data(self, act: str, data: str):
+        """
+        combined length of callback_data must be <= 64 bytes
+        json dict takes 21 simbol, so 43 lefts for act and data
+        """
+        callback_data = json.dumps({'act': act, 'data': data})
+        if len(callback_data) > 64:
+            raise Exception('United length of act and data is too big (watch method)')
+        return callback_data
     def start(self):
         self._start_notifing()
         self._start_handling_messages()
@@ -59,24 +69,22 @@ class TelegramBot:
         query = update.callback_query
         callback_data = json.loads(query.data)
         if callback_data['act'] == 'mark-card-finished':
-            card_id = callback_data['id']
+            card_id = callback_data['data']
             card = self._trello_client.get_card(card_id)
             card.set_due_complete()
+            query.answer()
+            new_message_text = query.message.text + '\nDone ✅'
+            query.edit_message_text(new_message_text)
         else:
-            print('unknow action')
-            return
-        query.answer()
-        new_message_text = query.message.text + '\nDone ✅'
-        query.edit_message_text(new_message_text)
+            query.answer()
+            query.edit_message_text('Unknow callback command. May be server issue')
+
 
     def _send_messages_with_unfinished_cards(self):
         cards = self._get_due_today_cards()
         for card in cards:
             msg_text = TelegramBot.card_obj_to_message_text(card)
-            # TODO maybe rework how callback data type is defined
-            callback_data = {'act': 'mark-card-finished',
-                             'id': card.id}
-            callback_data = json.dumps(callback_data)
+            callback_data = self._prepare_callback_data(act='mark-card-finished', data=card.id)
             reply_markup = InlineKeyboardMarkup(
                 [[InlineKeyboardButton('Finished', callback_data=callback_data)]])
             self._bot.send_message(text=msg_text,
