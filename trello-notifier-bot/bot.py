@@ -19,12 +19,11 @@ class State(Enum):
     CHOOSING_LIST  = 1
 
 class TelegramBot:
-    # _bot: telegram.Bot
-    # _notifier: Notifier
-    # _trello_client: MyTrelloClient
-    # _updater: telegram.ext.Updater
-    # _owner_id: str
-    # TODO somehow verify config is right
+    _bot: telegram.Bot
+    _uppdater: tg_ext.Updater
+    _owner_id: str
+    _trello_client: TrelloClient
+    _notify_time_list: List[str]
     def __init__(self, config:dict):
         self._bot              = telegram.Bot(config['telegram']['bot_token'])
         self._updater          = tg_ext.Updater(config['telegram']['bot_token'])
@@ -35,6 +34,7 @@ class TelegramBot:
         self._add_handlers()
 
     def _add_handlers(self) -> State:
+        dispatcher = self._updater.dispatcher
         conversation_handler = ConversationHandler(
             entry_points=[CommandHandler('add', self._handle_add)],
             states={
@@ -43,24 +43,24 @@ class TelegramBot:
             },
             fallbacks=[CommandHandler('cancel', self._handle_cancel)]
         )
-        self._updater.dispatcher.add_handler(conversation_handler)
-
-        callback_query_handler = CallbackQueryHandler(self._handle_callback_query)
-        self._updater.dispatcher.add_handler(callback_query_handler)
+        dispatcher.add_handler(conversation_handler)
+        dispatcher.add_handler(CallbackQueryHandler(self._handle_callback_query))
 
     def _handle_cancel(self, update: telegram.Update, context: tg_ext.CallbackContext):
         self._bot.send_message(update.message.chat_id, 'Canceled')
         return ConversationHandler.END
 
     def _handle_add(self, update: telegram.Update, context: tg_ext.CallbackContext):
+        """command must have form /add dd.mm.yyyy Description"""
+        chat_id = update.message.chat_id
         if len(context.args) < 2:
-            self._bot.send_message(update.message.chat_id, 'Your message must include date and name')
+            self._bot.send_message(chat_id, 'Your message must include date and name')
             return ConversationHandler.END
         # TODO a bit clumpsi None returning func, think how to rewrite
         date = context.args[0]
         date = to_date_if_correct(date)
         if date is None:
-            self._bot.send_message(update.message.chat_id, 'Incorrect date')
+            self._bot.send_message(chat_id, 'Incorrect date')
             return ConversationHandler.END
         card_name = ''.join(context.args[1:])
         context.user_data['date'] = date
@@ -72,19 +72,17 @@ class TelegramBot:
             callback_data = self._prepare_callback_data(act='choose-add-board', data=board.id)
             reply_button_rows.append([InlineKeyboardButton(board.name, callback_data=callback_data)])
         reply_markup = InlineKeyboardMarkup(reply_button_rows)
-        self._bot.send_message(chat_id=update.message.chat_id,
+        self._bot.send_message(chat_id=chat_id,
                                text='Choose board',
                                reply_markup=reply_markup)
         return State.CHOOSING_BOARD
 
     def _handle_choose_board(self, update: telegram.Update, context: tg_ext.CallbackContext):
         query = update.callback_query
-        callback_data = json.loads(query.data)
-        act = callback_data['act']
-        act_data = callback_data['data']
+        act, act_data = self._unpack_callback_data(query)
         query.answer()
         if act != 'choose-add-board':
-            self._bot.send_message('Finish or cancle adding new car before doing something else')
+            self._bot.send_message('Finish or /cancle adding new car before doing something else')
             return
         board_id = act_data
         reply_keyboard = self._gen_choose_list_inline_keyboard(board_id)
@@ -103,32 +101,37 @@ class TelegramBot:
 
     def _handle_choose_list(self, update: telegram.Update, context: tg_ext.CallbackContext):
         query = update.callback_query
-        callback_data = json.loads(query.data)
-        act = callback_data['act']
-        act_data = callback_data['data']
-        query.answer()
-        query.edit_message_reply_markup(reply_markup=None)
+        act, act_data = self._unpack_callback_data(query)
         if act != 'choose-add-list':
             self._bot.send_message('Finish or cancle adding new car before doing something else')
             return
+        query.answer()
+        query.edit_message_reply_markup(reply_markup=None)
         list_id = act_data
         user_data = context.user_data
-        _list = self._trello_client.get_list(list_id)
+        trello_list = self._trello_client.get_list(list_id)
         card_due_date = user_data['date'].isoformat()
         card_name = user_data['card-name']
-        _list.add_card(card_name, due=card_due_date)
+        trello_list.add_card(card_name, due=card_due_date)
         query.edit_message_text('Done ✅')
         return ConversationHandler.END
 
-    def _prepare_callback_data(self, act: str, data: str):
+    def _prepare_callback_data(self, act: str, data: str) -> str:
         """
         combined length of callback_data must be <= 64 bytes
         json dict takes 21 simbol, so 43 lefts for act and data
         """
         callback_data = json.dumps({'act': act, 'data': data})
         if len(callback_data) > 64:
-            raise Exception(f'United length of act and data is too big ({len(callback_data)}).For more info watch method)')
+            raise Exception(f'United length of act and data is too big ({len(callback_data)}). ' +\
+                             'For more info watch method)')
         return callback_data
+
+    def _unpack_callback_data(self, query: telegram.CallbackQuery) -> tuple[str, str]:
+        callback_data = json.loads(query.data)
+        act = callback_data['act']
+        act_data = callback_data['data']
+        return (act, act_data)
 
     def start(self):
         self._start_notifing()
@@ -154,17 +157,14 @@ class TelegramBot:
 
     def _handle_callback_query(self, update: telegram.Update, context: tg_ext.CallbackContext):
         query = update.callback_query
-        query.answer()
-        callback_data = json.loads(query.data)
-        act = callback_data['act']
-        act_data = callback_data['data']
+        act, act_data = self._unpack_callback_data(query)
         if act != 'mark-finished':
             self._bot.send_message(query.message.chat_id, 'Unavalible command now')
             return
+        query.answer()
         card_id = act_data
         card = self._trello_client.get_card(card_id)
         card.set_due_complete()
-        query.answer()
         new_message_text = query.message.text + '\nDone ✅'
         query.edit_message_text(new_message_text)
 
@@ -209,6 +209,8 @@ def to_date_if_correct(date: str) -> Optional[datetime.datetime]:
     except ValueError:
         return None
     return date
+
+
 
 def main():
     """Launch bot using given config file given as parameter"""
