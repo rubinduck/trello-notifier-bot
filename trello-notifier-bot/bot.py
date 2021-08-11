@@ -56,7 +56,6 @@ class TelegramBot:
         if len(context.args) < 2:
             self._bot.send_message(chat_id, 'Your message must include date and name')
             return ConversationHandler.END
-        # TODO a bit clumpsi None returning func, think how to rewrite
         date = context.args[0]
         date = to_date_if_correct(date)
         if date is None:
@@ -153,7 +152,6 @@ class TelegramBot:
     def _set_up_notification_schedule(self, notification_times: List[str]):
         for time in notification_times:
             schedule.every().day.at(time).do(self._send_messages_with_unfinished_cards)
-            # schedule.every(5).seconds.do(self._send_messages_with_unfinished_cards)
 
     def _handle_callback_query(self, update: telegram.Update, context: tg_ext.CallbackContext):
         query = update.callback_query
@@ -180,10 +178,11 @@ class TelegramBot:
                                    chat_id=self._owner_id,
                                    reply_markup=reply_markup)
 
-    # TODO maybe rename
     def _get_due_today_cards(self) -> List[str]:
-        """returns string card representations,
-           what have due date what is today or before and is not closed"""
+        """
+        returns string card representations,
+        what have due date today or earlier and isn't closed
+        """
         boards = self._trello_client.list_boards()
         cards = flatten(map(lambda board: board.open_cards(), boards))
         cards = filter(lambda card: card.due is not None, cards)
@@ -224,7 +223,7 @@ def main():
 
     config_file_path = args.config_file
     if not os.path.isfile(config_file_path):
-        print('You must give valid file path')
+        print('You must give valid config file path')
         return
 
     with open(config_file_path, 'r') as config_file:
