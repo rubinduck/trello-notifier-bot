@@ -2,3 +2,4 @@ venv
 .vscode
 config.json
 *.code-workspace
+*.pyc
