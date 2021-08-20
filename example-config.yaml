@@ -1,0 +1,7 @@
+trello_api_keys:
+  api_key: ''
+  api_secret: ''
+telegram:
+  bot_token: ''
+  owner_chat_id: ''
+notification_times: ['10:00', '22:00']
