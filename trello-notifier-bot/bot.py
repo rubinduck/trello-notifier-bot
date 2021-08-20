@@ -24,7 +24,7 @@ class TelegramBot:
     _owner_id: str
     _trello_client: TrelloClient
     _notify_time_list: List[str]
-    def __init__(self, config:dict):
+    def __init__(self, config: dict):
         self._bot              = telegram.Bot(config['telegram']['bot_token'])
         self._updater          = tg_ext.Updater(config['telegram']['bot_token'])
         self._owner_id         = config['telegram']['owner_chat_id']

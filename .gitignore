@@ -1,5 +1,5 @@
 venv
 .vscode
-config.json
+config.yaml
 *.code-workspace
 *.pyc
